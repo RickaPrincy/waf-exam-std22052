@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { v4 as uuid } from "uuid";
 import { getAxiosInstance } from "../conf/axios";
 import { AxiosError } from "axios";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const WafFormSchema = z.object({
   N: z.string()
@@ -15,13 +15,44 @@ const WafFormSchema = z.object({
 type WafFormType = z.infer<typeof WafFormSchema>;
 const JCLOUDIFY_URL = "https://api.prod.jcloudify.com/whoami";
 export const Home = () => {
+  const [p] = useSearchParams();
   const navigate = useNavigate();
-  const [countConf, setCountConf] = useState<{ timer: NodeJS.Timeout | null, maxCount: number, isDoingSequence: boolean, current: number }>({
-    current: 0,
-    isDoingSequence: false,
-    maxCount: 0,
-    timer: null
+  const [countConf, setCountConf] = useState<{ maxCount: number, isDoingSequence: boolean, current: number }>({
+    current: +(p.get("current") ?? 0),
+    isDoingSequence: p.get("current") !== null,
+    maxCount: +(p.get("maxCount") ?? 1),
   });
+
+
+  const whoami = async () => {
+    if (!countConf.isDoingSequence) {
+      return;
+    }
+
+    try {
+      await getAxiosInstance().get(JCLOUDIFY_URL);
+      throw new Error("Expected error");
+    } catch (error) {
+      if ((error as AxiosError).status === 405) {
+        navigate(`/human-verification?current=${countConf.current}&maxCount=${countConf.maxCount}`);
+        return;
+      }
+      setCountConf(prev => ({
+        ...prev,
+        current: prev.current + 1
+      }));
+    }
+  }
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      whoami();
+    }, 1_000);
+
+    return () => {
+      clearInterval(timer);
+    }
+  }, [countConf.isDoingSequence, countConf.current]);
 
   const { register, handleSubmit } = useForm<WafFormType>({
     defaultValues: {
@@ -31,50 +62,32 @@ export const Home = () => {
   });
 
   const doSequence = (data: WafFormType) => {
-    const timer = setInterval(async () => {
-      whoami();
-    }, 1_000);
-
     setCountConf({
       current: 0,
       isDoingSequence: true,
       maxCount: +data.N,
-      timer
     });
-  }
-
-  const whoami = async () => {
-    try {
-      await getAxiosInstance().get(JCLOUDIFY_URL);
-      throw new Error("Expected error");
-    } catch (error) {
-      if ((error as AxiosError).status === 405) {
-        navigate(`/human-verification?current=${countConf.current}&max=${countConf.maxCount}`);
-        return;
-      }
-
-      setCountConf(prev => ({
-        ...prev,
-        current: prev.current + 1
-      }));
-    }
   }
 
   useEffect(() => {
     if (countConf.current >= countConf.maxCount) {
-      clearInterval(countConf.timer!);
       setCountConf({
         current: 0,
-        timer: null,
         maxCount: 1,
         isDoingSequence: false
       })
     }
   }, [countConf.current, countConf.maxCount]);
-
   const logs = Array(countConf.current).fill(0);
   return (
     <Box sx={{ mx: "auto", width: "fit-content" }}>
+      {countConf.isDoingSequence && (
+        <Typography sx={{ textAlign: "center", fontSize: "1rem", opacity: .8, fontWeight: "bold", mt: 5, mb: 2 }}>
+          Max Count: {countConf.maxCount}
+          <br />
+          Current Count: {countConf.current}
+        </Typography>
+      )}
       <Typography sx={{ textAlign: "center", fontSize: "1rem", opacity: .8, fontWeight: "bold", mt: 5, mb: 2 }}>
         Waf Exam STD22052
       </Typography>

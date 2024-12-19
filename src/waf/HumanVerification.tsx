@@ -8,7 +8,7 @@ export const HumanVerification = () => {
   const [p] = useSearchParams();
   const navigate = useNavigate();
 
-  const redirectTo = p.get("redirect_to") || "/";
+  const redirectTo = "/?current=" + p.get("current") + "&maxCount=" + p.get("maxCount");
 
   const captchaContainerRef = useRef<HTMLDivElement>(null);
   const captchaRef = useRef<HTMLDivElement>(null);
