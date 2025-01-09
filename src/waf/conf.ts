@@ -1,4 +1,5 @@
 import { Env } from "../conf/env";
+
 export const AWS_WAF_SCRIPT_ID = "AwsWAFScript";
 
 export const AWS_WAF_ACTION_HEADER_KEY = "x-amzn-waf-action";

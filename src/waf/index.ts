@@ -1,3 +1,3 @@
 export * from "./conf";
-export * from "./useAwsWafCaptchaHandler";
+export * from "./AwsWafCaptchaHandler";
 export * from "./HumanVerification";

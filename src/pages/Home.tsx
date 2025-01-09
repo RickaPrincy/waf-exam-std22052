@@ -1,52 +1,53 @@
-import { Box, Button, TextField, Typography } from "@mui/material";
+import { useEffect, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod"
-import { useEffect, useState } from "react";
 import { v4 as uuid } from "uuid";
+import { isAxiosError } from "axios";
+import { Box, Button, TextField, Typography } from "@mui/material";
+
 import { getAxiosInstance } from "../conf/axios";
-import { AxiosError } from "axios";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { JCLOUDIFY_URL } from "../conf/api";
 
 const WafFormSchema = z.object({
-  N: z.string()
+  N: z
+    .number()
+    .min(1, "Le nombre doit être au moins 1.")
+    .max(1000, "Le nombre doit être au plus 1 000.")
 });
-
 type WafFormType = z.infer<typeof WafFormSchema>;
-const JCLOUDIFY_URL = "https://api.prod.jcloudify.com/whoami";
+
+const CURRENT_VALUE_SEARCH_CACHE_NAME = "current_value";
+const MAX_VALUE_SEARCH_CACHE_NAME = "max_value";
 export const Home = () => {
-  const [p] = useSearchParams();
-  const navigate = useNavigate();
   const [countConf, setCountConf] = useState<{ maxCount: number, isDoingSequence: boolean, current: number }>({
-    current: +(p.get("current") ?? 0),
-    isDoingSequence: p.get("current") !== null,
-    maxCount: +(p.get("maxCount") ?? 1),
+    current: +(localStorage.getItem(CURRENT_VALUE_SEARCH_CACHE_NAME) ?? 0),
+    isDoingSequence:
+      localStorage.getItem(MAX_VALUE_SEARCH_CACHE_NAME) !== undefined && localStorage.getItem(MAX_VALUE_SEARCH_CACHE_NAME) !== "0"
+    ,
+    maxCount: +(localStorage.getItem(MAX_VALUE_SEARCH_CACHE_NAME) ?? 0),
   });
 
-
-  const whoami = async () => {
+  const callWhoami = async () => {
     if (!countConf.isDoingSequence) {
       return;
     }
 
     try {
-      await getAxiosInstance().get(JCLOUDIFY_URL);
-      throw new Error("Expected error");
+      await getAxiosInstance().get(`${JCLOUDIFY_URL}/whoami`);
     } catch (error) {
-      if ((error as AxiosError).status === 405) {
-        navigate(`/human-verification?current=${countConf.current}&maxCount=${countConf.maxCount}`);
-        return;
+      if (isAxiosError(error) && error.status === 403) {
+        setCountConf(prev => ({
+          ...prev,
+          current: prev.current + 1
+        }));
       }
-      setCountConf(prev => ({
-        ...prev,
-        current: prev.current + 1
-      }));
     }
   }
 
   useEffect(() => {
     const timer = setInterval(() => {
-      whoami();
+      callWhoami();
     }, 1_000);
 
     return () => {
@@ -54,9 +55,14 @@ export const Home = () => {
     }
   }, [countConf.isDoingSequence, countConf.current]);
 
-  const { register, handleSubmit } = useForm<WafFormType>({
+  useEffect(() => {
+    localStorage.setItem(CURRENT_VALUE_SEARCH_CACHE_NAME, countConf.current.toString());
+    localStorage.setItem(MAX_VALUE_SEARCH_CACHE_NAME, countConf.maxCount.toString());
+  }, [countConf.current, countConf.maxCount])
+
+  const { register, handleSubmit, formState: { errors } } = useForm<WafFormType>({
     defaultValues: {
-      N: "1"
+      N: 1
     },
     resolver: zodResolver(WafFormSchema)
   });
@@ -71,6 +77,7 @@ export const Home = () => {
 
   useEffect(() => {
     if (countConf.current >= countConf.maxCount) {
+      localStorage.clear();
       setCountConf({
         current: 0,
         maxCount: 1,
@@ -78,6 +85,7 @@ export const Home = () => {
       })
     }
   }, [countConf.current, countConf.maxCount]);
+
   const logs = Array(countConf.current).fill(0);
   return (
     <Box sx={{ mx: "auto", width: "fit-content" }}>
@@ -93,8 +101,11 @@ export const Home = () => {
       </Typography>
       {!countConf.isDoingSequence && (
         <form onSubmit={handleSubmit(doSequence)}>
-          <TextField type="number" placeholder="N Value" {...register('N')} />
+          <TextField type="number" placeholder="N Value" {...register('N', { valueAsNumber: true })} />
           <Button variant="contained" sx={{ display: "block", my: 1 }} type="submit">Submit</Button>
+          <Typography sx={{ color: "red" }}>
+            {errors.N?.message}
+          </Typography>
         </form>
       )}
       {logs.map((_, index) => (
